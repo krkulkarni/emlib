@@ -50,17 +50,28 @@ emlib/                  # The EM library
 
 ## Usage
 
-1.  **Prepare Data:** Load your data into a `List[Dict[str, np.ndarray]]`. Each dictionary in the list represents one subject, and the dictionary keys (e.g., `'choices'`, `'rewards'`, `'rt'`) map to NumPy arrays containing the trial-by-trial data. Ensure array shapes are consistent within a subject where necessary (e.g., same number of trials).
+1.  **Prepare Data:** Load your data into a `List[pd.DataFrame]`. Each DataFrame in the list represents one subject's data in long format (one row per trial). Ensure the DataFrames contain all necessary columns required by the models you intend to fit (e.g., `'Action'`, `'Reward'`, `'Craving Rating'`). Consistent column naming is recommended.
 
     ```python
-    # Example using a hypothetical loading function
-    # from your_utils import load_my_data_to_dicts
-    # all_subject_data_list = load_my_data_to_dicts("path/to/data.csv")
-    # Example subject data:
-    # subject_1 = {'choices': np.array([...]), 'rewards': np.array([...]), 'condition': np.array([...])}
-    # all_subject_data_list = [subject_1, ...]
+    import pandas as pd
+    from your_utils import load_data_as_list_of_dataframes # Example helper
+
+    # Example: Load data ensuring each subject is a separate DataFrame
+    all_subject_data_list = load_data_as_list_of_dataframes("path/to/data.csv", pid_column='PID')
+    # all_subject_data_list = [subject1_df, subject2_df, ...]
     ```
-    *(A helper function like `load_and_preprocess_data` shown previously can be used or adapted for loading from standard CSV formats).*
+    *(A helper function like `load_and_preprocess_data_df` shown previously can be used or adapted).*
+
+2.  **Define Your Model:** Create a Python class implementing `emlib.ModelProtocol`.
+    *   `get_likelihood_info()`: Returns `ModelLikelihoodInfo` specifying `param_names`, `transform_funcs`, and `log_likelihood_func`.
+    *   **`log_likelihood_func`**: Must now accept `(transformed_params: np.ndarray, data: pd.DataFrame)` and return the log-likelihood (float). Access data using DataFrame column indexing (e.g., `data['Reward'].values`).
+    *   `get_param_bounds()` (Optional): Define native-space bounds.
+
+    ```python
+    from models import QLearningRW # Adjust import path
+
+    model_instance = QLearningRW()
+    ```
 
 2.  **Define Your Model:** Create a Python class for your computational model that implements the `emlib.ModelProtocol`. This involves defining:
     *   `get_likelihood_info()`: Returns a `ModelLikelihoodInfo` tuple containing:

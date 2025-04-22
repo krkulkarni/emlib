@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from scipy.optimize import minimize, OptimizeResult
 from scipy.stats import norm
 import numdifftools as nd
@@ -6,12 +7,14 @@ from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 import time
 from copy import deepcopy
-import warnings
 from typing import List, Dict, Any, Tuple, Callable, NamedTuple, Protocol
 
 # Import from other modules within the pyem package
 from .model_interface import ModelProtocol, ModelLikelihoodInfo, EStepResult, FitResult
 from .bic import calculate_bic_int
+
+import warnings
+warnings.filterwarnings("ignore")
 
 # Define EPSILON or import it if defined elsewhere (e.g., transforms.py)
 EPSILON = 1e-7
@@ -42,7 +45,7 @@ def log_prior(transformed_params: np.ndarray,
 
 # --- Negative Log Posterior Calculation ---
 def negative_log_posterior(transformed_params: np.ndarray,
-                           data: Dict[str, Any], # Passed as args to minimize
+                           data: pd.DataFrame, # Passed as args to minimize
                            group_theta: Dict[str, Dict[str, float]],
                            model_info: ModelLikelihoodInfo) -> float:
     """
@@ -56,7 +59,7 @@ def negative_log_posterior(transformed_params: np.ndarray,
 
 # --- E-Step for Single Subject ---
 def run_e_step_for_subject(pid_index: int,
-                           subject_data: Dict[str, Any],
+                           subject_data: pd.DataFrame,
                            group_theta: Dict[str, Dict[str, float]],
                            model_info: ModelLikelihoodInfo,
                            optimizer_options: Dict = None,
@@ -118,7 +121,7 @@ def run_e_step_for_subject(pid_index: int,
 
 
 # --- Parallel E-Step Wrapper ---
-def run_e_step_parallel(all_subject_data: List[Dict[str, Any]],
+def run_e_step_parallel(all_subject_data: List[pd.DataFrame],
                         group_theta: Dict[str, Dict[str, float]],
                         model_info: ModelLikelihoodInfo,
                         optimizer_options: Dict = None,
@@ -187,7 +190,7 @@ def run_m_step(e_step_results: List[EStepResult],
 
 
 # --- Main EM Fitting Function ---
-def fit_em_hierarchical(all_subject_data: List[Dict[str, Any]],
+def fit_em_hierarchical(all_subject_data: List[pd.DataFrame],
                         model: ModelProtocol,
                         initial_group_theta: Dict[str, Dict[str, float]],
                         max_iter: int = 100,
@@ -293,7 +296,7 @@ def fit_em_hierarchical(all_subject_data: List[Dict[str, Any]],
     else:
         log_marginal_likelihood_approx = -np.inf
 
-    total_trials = sum(len(subj['choices'].ravel()) for subj in all_subject_data) # Use ravel for 1D/2D
+    total_trials = sum(len(subj_df) for subj_df in all_subject_data)
     bic_int = calculate_bic_int(log_marginal_likelihood_approx, num_subjects, total_trials, group_theta)
 
     if verbose:

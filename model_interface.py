@@ -1,5 +1,6 @@
 from typing import Protocol, List, Dict, Tuple, Callable, NamedTuple, Any
 import numpy as np
+import pandas as pd
 
 # --- Data Structures ---
 
@@ -32,7 +33,7 @@ class ModelLikelihoodInfo(NamedTuple):
     """Information returned by a model required by the EM algorithm."""
     param_names: List[str] # List of parameter names in order
     transform_funcs: Dict[str, Dict[str, Callable]] # {'param': {'forward': f, 'inverse': inv_f}}
-    log_likelihood_func: Callable[[np.ndarray, Dict[str, Any]], float] # Takes transformed_params, data -> loglik
+    log_likelihood_func: Callable[[np.ndarray, pd.DataFrame], float] # Takes transformed_params, data -> loglik
 
 class ModelProtocol(Protocol):
     """Defines the interface required for any model used with the EM fitter."""
