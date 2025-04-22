@@ -5,3 +5,4 @@ from .math_utils import softmax
 from .em_core import fit_em_hierarchical # Expose the main fitting function
 from .bic import calculate_bic_int
 from .plotting_utils import plot_parameter_distributions, plot_model_comparison_bic
+from .save_utils import save_fit_result, load_fit_result
