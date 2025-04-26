@@ -1,16 +1,17 @@
 import numpy as np
 import pandas as pd
-import math
+# import math
 from typing import List, Dict, Optional, Sequence
 
 # Import necessary components from the library
 from .model_interface import FitResult, ModelProtocol
-from .transforms import param_transformations # Use the defined transformations
+# from .transforms import param_transformations  # Use the defined transformations
 
 # Optional imports - check if available
 try:
     import matplotlib.pyplot as plt
     import seaborn as sns
+
     _plotting_enabled = True
 except ImportError:
     _plotting_enabled = False
@@ -18,9 +19,8 @@ except ImportError:
     plt = None
     sns = None
 
-def plot_parameter_distributions(fit_result: FitResult,
-                                 model: ModelProtocol,
-                                 max_beta_plot: Optional[float] = 50.0):
+
+def plot_parameter_distributions(fit_result: FitResult, model: ModelProtocol, max_beta_plot: Optional[float] = 50.0):
     """
     Plots the distributions of individual MAP parameter estimates from EM results.
 
@@ -49,7 +49,7 @@ def plot_parameter_distributions(fit_result: FitResult,
 
     model_info = model.get_likelihood_info()
     param_names = model_info.param_names
-    inv_transforms = {name: info['inverse'] for name, info in model_info.transform_funcs.items()}
+    inv_transforms = {name: info["inverse"] for name, info in model_info.transform_funcs.items()}
 
     # Extract native-space MAP estimates for all parameters
     native_maps: Dict[str, List[float]] = {name: [] for name in param_names}
@@ -64,7 +64,9 @@ def plot_parameter_distributions(fit_result: FitResult,
                     native_val = inv_transforms[name](res.map_estimate[i])
                     native_maps[name].append(native_val)
                 except Exception as e:
-                    print(f"Warning: Could not inverse transform parameter '{name}' for subject index {res.pid_index}. Error: {e}")
+                    print(
+                        f"Warning: Could not inverse transform parameter '{name}' for subject index {res.pid_index}. Error: {e}"
+                    )
                     # Handle error, e.g., append NaN or skip subject for this param?
                     # Appending NaN might be better for consistent DataFrame length if possible
                     native_maps[name].append(np.nan)
@@ -79,49 +81,50 @@ def plot_parameter_distributions(fit_result: FitResult,
 
     # Create DataFrame - handle potential NaNs if transforms failed
     try:
-        plot_data = {'Subject Index': subject_indices}
-        plot_data.update({f'MAP {name}': native_maps[name] for name in param_names})
+        plot_data = {"Subject Index": subject_indices}
+        plot_data.update({f"MAP {name}": native_maps[name] for name in param_names})
         individual_params_df = pd.DataFrame(plot_data)
-        individual_params_df = individual_params_df.dropna() # Drop rows where any transform failed
+        individual_params_df = individual_params_df.dropna()  # Drop rows where any transform failed
         if individual_params_df.empty:
-             print("DataFrame is empty after removing NaNs from failed transformations. Skipping plots.")
-             return
+            print("DataFrame is empty after removing NaNs from failed transformations. Skipping plots.")
+            return
     except ValueError as e:
         print(f"Error creating DataFrame for plotting, likely due to inconsistent list lengths: {e}")
         return
-
 
     # Determine plot layout (e.g., 2 columns)
     n_params = len(param_names)
     n_cols = n_params
     n_rows = 1
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 5, n_rows * 4.5), squeeze=False) # Ensure axes is always 2D
-    axes_flat = axes.flatten() # Flatten for easy iteration
+    fig, axes = plt.subplots(
+        n_rows, n_cols, figsize=(n_cols * 5, n_rows * 4.5), squeeze=False
+    )  # Ensure axes is always 2D
+    axes_flat = axes.flatten()  # Flatten for easy iteration
 
     print(f"\nGenerating plots for {len(individual_params_df)} subjects with valid estimates...")
 
     for i, name in enumerate(param_names):
         ax = axes_flat[i]
-        col_name = f'MAP {name}'
+        col_name = f"MAP {name}"
 
         # Use specific y-limits for known parameters if desired
         ylim = None
-        ylabel = f'{name}'
-        if name == 'lr' or name == 'alpha':
-             ylim = (0, 1)
-             ylabel = f'Learning Rate ({name})'
-        elif name == 'beta':
-             ylabel = f'Inv. Temp. ({name})'
-             if max_beta_plot is not None:
-                 ylim = (0, max_beta_plot) # Use provided limit
-             else:
-                 ylim = (0, None) # Only lower limit
+        ylabel = f"{name}"
+        if name == "lr" or name == "alpha":
+            ylim = (0, 1)
+            ylabel = f"Learning Rate ({name})"
+        elif name == "beta":
+            ylabel = f"Inv. Temp. ({name})"
+            if max_beta_plot is not None:
+                ylim = (0, max_beta_plot)  # Use provided limit
+            else:
+                ylim = (0, None)  # Only lower limit
 
-        sns.boxplot(y=col_name, data=individual_params_df, ax=ax, color='skyblue', width=0.3, showfliers=False)
-        sns.stripplot(y=col_name, data=individual_params_df, ax=ax, color='black', alpha=0.6, size=4)
-        ax.set_title(f'Distribution of MAP {name} Estimates')
+        sns.boxplot(y=col_name, data=individual_params_df, ax=ax, color="skyblue", width=0.3, showfliers=False)
+        sns.stripplot(y=col_name, data=individual_params_df, ax=ax, color="black", alpha=0.6, size=4)
+        ax.set_title(f"Distribution of MAP {name} Estimates")
         ax.set_ylabel(ylabel)
-        ax.set_xlabel("") # Remove x-label as it's clear from y
+        ax.set_xlabel("")  # Remove x-label as it's clear from y
 
         if ylim:
             ax.set_ylim(ylim)
@@ -134,8 +137,8 @@ def plot_parameter_distributions(fit_result: FitResult,
     plt.tight_layout()
     plt.show()
 
-def plot_model_comparison_bic(fit_results_list: Sequence[FitResult],
-                              model_names: Sequence[str]):
+
+def plot_model_comparison_bic(fit_results_list: Sequence[FitResult], model_names: Sequence[str]):
     """
     Creates a bar plot comparing the BIC_int values of multiple model fits.
 
@@ -178,31 +181,27 @@ def plot_model_comparison_bic(fit_results_list: Sequence[FitResult],
     delta_bics = [bic - min_bic for bic in valid_bics]
 
     # Create DataFrame for plotting
-    plot_df = pd.DataFrame({
-        'Model': valid_names,
-        'BIC_int': valid_bics,
-        'Delta BIC': delta_bics
-    })
-    plot_df = plot_df.sort_values('BIC_int') # Sort by BIC for clearer comparison
+    plot_df = pd.DataFrame({"Model": valid_names, "BIC_int": valid_bics, "Delta BIC": delta_bics})
+    plot_df = plot_df.sort_values("BIC_int")  # Sort by BIC for clearer comparison
 
     # --- Create Plot ---
-    fig, ax = plt.subplots(1, 2, figsize=(10, 5), sharey=False) # Don't share y-axis
+    fig, ax = plt.subplots(1, 2, figsize=(10, 5), sharey=False)  # Don't share y-axis
 
     # Plot 1: Absolute BIC_int values
-    sns.barplot(x='BIC_int', y='Model', hue='Model', data=plot_df, ax=ax[0], legend=False)
-    ax[0].set_title('Model Comparison (Lower BIC is Better)')
-    ax[0].set_xlabel('Integrated BIC (BIC_int)')
-    ax[0].set_ylabel('Model')
+    sns.barplot(x="BIC_int", y="Model", hue="Model", data=plot_df, ax=ax[0], legend=False)
+    ax[0].set_title("Model Comparison (Lower BIC is Better)")
+    ax[0].set_xlabel("Integrated BIC (BIC_int)")
+    ax[0].set_ylabel("Model")
 
     # Plot 2: Delta BIC values (relative to best model)
-    sns.barplot(x='Delta BIC', y='Model', hue='Model', data=plot_df, ax=ax[1], legend=False)
-    ax[1].set_title('Model Comparison (Delta BIC)')
-    ax[1].set_xlabel('Delta BIC (Relative to Best Model)')
-    ax[1].set_ylabel('') # Remove redundant y-label
+    sns.barplot(x="Delta BIC", y="Model", hue="Model", data=plot_df, ax=ax[1], legend=False)
+    ax[1].set_title("Model Comparison (Delta BIC)")
+    ax[1].set_xlabel("Delta BIC (Relative to Best Model)")
+    ax[1].set_ylabel("")  # Remove redundant y-label
 
     # Add text labels for Delta BIC
     for container in ax[1].containers:
-        ax[1].bar_label(container, fmt='%.1f', padding=3)
+        ax[1].bar_label(container, fmt="%.1f", padding=3)
 
     sns.despine()
     plt.tight_layout()

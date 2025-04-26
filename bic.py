@@ -1,12 +1,14 @@
 # pyem/bic.py
 import numpy as np
-from typing import Dict, List
-from .model_interface import FitResult # Import FitResult for type hinting if needed
+from typing import Dict
+# from .model_interface import FitResult  # Import FitResult for type hinting if needed
 
-def calculate_bic_int(log_marginal_likelihood_approx: float,
-                      num_subjects: int,
-                      total_trials: int,
-                      group_theta: Dict[str, Dict[str, float]]) -> float:
+
+def calculate_bic_int(
+    log_marginal_likelihood_approx: float,
+    total_trials: int,
+    group_theta: Dict[str, Dict[str, float]],
+) -> float:
     """
     Calculates the Integrated Bayesian Information Criterion (BIC_int).
 
@@ -15,7 +17,6 @@ def calculate_bic_int(log_marginal_likelihood_approx: float,
                                          likelihood log p(A|theta_ML). Often approximated
                                          by the sum of log posteriors at the MAP estimates
                                          under the final group parameters.
-        num_subjects: The total number of subjects used in the fit.
         total_trials: The total number of trials across all subjects.
         group_theta: The final estimated group hyperparameters. Used to determine
                      the number of free group parameters.
@@ -37,8 +38,8 @@ def calculate_bic_int(log_marginal_likelihood_approx: float,
     num_hyperparams = len(group_theta) * 2
 
     if num_hyperparams <= 0:
-         print("Warning: Cannot calculate BIC_int with zero hyperparameters.")
-         return np.inf
+        print("Warning: Cannot calculate BIC_int with zero hyperparameters.")
+        return np.inf
 
     # BIC_int formula
     bic = -2 * log_marginal_likelihood_approx + num_hyperparams * np.log(total_trials)
@@ -48,6 +49,7 @@ def calculate_bic_int(log_marginal_likelihood_approx: float,
         return np.inf
 
     return bic
+
 
 # Example of how it might be called (usually within fit_em_hierarchical)
 # bic_value = calculate_bic_int(log_marginal_likelihood_approx,

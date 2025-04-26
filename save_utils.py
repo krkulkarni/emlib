@@ -7,6 +7,7 @@ from typing import Optional
 # Import FitResult for type hinting
 from .model_interface import FitResult
 
+
 def save_fit_result(fit_result: FitResult, filename: str, compress: bool = True):
     """
     Saves a FitResult object using joblib.
@@ -28,6 +29,7 @@ def save_fit_result(fit_result: FitResult, filename: str, compress: bool = True)
     except Exception as e:
         warnings.warn(f"Error saving fit result to {filename}: {e}")
 
+
 def load_fit_result(filename: str) -> Optional[FitResult]:
     """
     Loads a FitResult object using joblib.
@@ -46,11 +48,11 @@ def load_fit_result(filename: str) -> Optional[FitResult]:
         fit_result = joblib.load(filename)
         # Basic type check after loading
         if isinstance(fit_result, FitResult):
-             # print(f"Fit result loaded successfully from: {filename}") # Optional load message
-             return fit_result
+            # print(f"Fit result loaded successfully from: {filename}") # Optional load message
+            return fit_result
         else:
-             warnings.warn(f"Loaded object from {filename} is not of type FitResult.")
-             return None
+            warnings.warn(f"Loaded object from {filename} is not of type FitResult.")
+            return None
     except Exception as e:
         warnings.warn(f"Error loading fit result from {filename}: {e}")
         return None

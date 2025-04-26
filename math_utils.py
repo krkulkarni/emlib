@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def softmax(x: np.ndarray, beta: float = 1.0) -> np.ndarray:
     """
     Compute softmax values for each set of scores in x, scaled by beta.
@@ -14,7 +15,7 @@ def softmax(x: np.ndarray, beta: float = 1.0) -> np.ndarray:
         Array of probabilities with the same shape as x.
     """
     if beta < 0:
-        beta = 1e-6 # Beta must be non-negative for interpretation
+        beta = 1e-6  # Beta must be non-negative for interpretation
 
     if x.ndim == 1:
         # Numerically stable softmax for 1D input
@@ -34,11 +35,11 @@ def softmax(x: np.ndarray, beta: float = 1.0) -> np.ndarray:
     probs = np.nan_to_num(probs, nan=0.0)
     # Renormalize slightly if probabilities don't sum exactly to 1 due to numerical issues
     if probs.ndim == 1 and not np.isclose(np.sum(probs), 1.0):
-         probs /= np.sum(probs)
+        probs /= np.sum(probs)
     elif probs.ndim == 2:
-         row_sums = np.sum(probs, axis=1, keepdims=True)
-         # Avoid division by zero for rows that were all NaN initially
-         safe_sums = np.where(row_sums == 0, 1.0, row_sums)
-         probs /= safe_sums
+        row_sums = np.sum(probs, axis=1, keepdims=True)
+        # Avoid division by zero for rows that were all NaN initially
+        safe_sums = np.where(row_sums == 0, 1.0, row_sums)
+        probs /= safe_sums
 
     return probs

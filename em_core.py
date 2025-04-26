@@ -1,28 +1,32 @@
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize, OptimizeResult
+from scipy.optimize import minimize # OptimizeResult
 from scipy.stats import norm
 import numdifftools as nd
 from joblib import Parallel, delayed
 from tqdm.auto import tqdm
 import time
 from copy import deepcopy
-from typing import List, Dict, Any, Tuple, Callable, NamedTuple, Protocol
+from typing import List, Dict # Any, Tuple, Callable, NamedTuple, Protocol
 
 # Import from other modules within the pyem package
 from .model_interface import ModelProtocol, ModelLikelihoodInfo, EStepResult, FitResult
 from .bic import calculate_bic_int
 
 import warnings
+
 warnings.filterwarnings("ignore")
 
 # Define EPSILON or import it if defined elsewhere (e.g., transforms.py)
 EPSILON = 1e-7
 
+
 # --- Log Prior Calculation ---
-def log_prior(transformed_params: np.ndarray,
-              group_theta: Dict[str, Dict[str, float]],
-              param_names: List[str]) -> float:
+def log_prior(
+    transformed_params: np.ndarray,
+    group_theta: Dict[str, Dict[str, float]],
+    param_names: List[str],
+) -> float:
     """
     Calculates the log prior probability density for a set of transformed parameters.
     (Implementation is the same as before)
@@ -31,53 +35,65 @@ def log_prior(transformed_params: np.ndarray,
     for i, name in enumerate(param_names):
         if name not in group_theta:
             raise ValueError(f"Group parameters (theta) missing for parameter: {name}")
-        mu = group_theta[name]['mu']
-        variance = group_theta[name]['var']
-        if variance <= 0: return -np.inf
+        mu = group_theta[name]["mu"]
+        variance = group_theta[name]["var"]
+        if variance <= 0:
+            return -np.inf
         scale = np.sqrt(variance)
-        if scale <= 0 or not np.isfinite(scale): return -np.inf
+        if scale <= 0 or not np.isfinite(scale):
+            return -np.inf
         try:
             lp = norm.logpdf(transformed_params[i], loc=mu, scale=scale)
-            if not np.isfinite(lp): lp = -1e6 # Avoid -inf
+            if not np.isfinite(lp):
+                lp = -1e6  # Avoid -inf
             total_log_prior += lp
-        except ValueError: return -np.inf
+        except ValueError:
+            return -np.inf
     return total_log_prior
 
+
 # --- Negative Log Posterior Calculation ---
-def negative_log_posterior(transformed_params: np.ndarray,
-                           data: pd.DataFrame, # Passed as args to minimize
-                           group_theta: Dict[str, Dict[str, float]],
-                           model_info: ModelLikelihoodInfo) -> float:
+def negative_log_posterior(
+    transformed_params: np.ndarray,
+    data: pd.DataFrame,  # Passed as args to minimize
+    group_theta: Dict[str, Dict[str, float]],
+    model_info: ModelLikelihoodInfo,
+) -> float:
     """
     Calculates the negative log posterior probability (objective function).
     (Implementation is the same as before)
     """
     log_lik = model_info.log_likelihood_func(transformed_params, data)
     log_pri = log_prior(transformed_params, group_theta, model_info.param_names)
-    if not np.isfinite(log_lik) or not np.isfinite(log_pri): return np.inf
+    if not np.isfinite(log_lik) or not np.isfinite(log_pri):
+        return np.inf
     return -(log_lik + log_pri)
 
+
 # --- E-Step for Single Subject ---
-def run_e_step_for_subject(pid_index: int,
-                           subject_data: pd.DataFrame,
-                           group_theta: Dict[str, Dict[str, float]],
-                           model_info: ModelLikelihoodInfo,
-                           optimizer_options: Dict = None,
-                           initial_guess: np.ndarray = None,
-                           verbose: bool = False) -> EStepResult:
+def run_e_step_for_subject(
+    pid_index: int,
+    subject_data: pd.DataFrame,
+    group_theta: Dict[str, Dict[str, float]],
+    model_info: ModelLikelihoodInfo,
+    optimizer_options: Dict = None,
+    initial_guess: np.ndarray = None,
+    verbose: bool = False,
+) -> EStepResult:
     """
     Performs the E-step for a single subject.
-    (Implementation is the same as before, including warnings)
     """
     if optimizer_options is None:
-        optimizer_options = {'method': 'L-BFGS-B', 'options': {'maxiter': 1000}}
+        optimizer_options = {"method": "L-BFGS-B", "options": {"maxiter": 1000}}
 
     # Pass static args needed by the objective function via 'args' tuple
     obj_args = (subject_data, group_theta, model_info)
-    objective_func = lambda p, *args: negative_log_posterior(p, *args) # Ensure correct signature
+    # objective_func = lambda p, *args: negative_log_posterior(p, *args)  # Ensure correct signature
+    def objective_func(p, *args):
+        return negative_log_posterior(p, *args)
 
     if initial_guess is None:
-        initial_guess = np.array([group_theta[name]['mu'] for name in model_info.param_names])
+        initial_guess = np.array([group_theta[name]["mu"] for name in model_info.param_names])
 
     # --- Optimization ---
     try:
@@ -85,8 +101,12 @@ def run_e_step_for_subject(pid_index: int,
     except Exception as e:
         warnings.warn(f"Optimizer Error for subject index {pid_index}: {e}")
         failed_hess_inv = np.eye(len(model_info.param_names)) * 1e6
-        return EStepResult(pid_index=pid_index, map_estimate=initial_guess,
-                           hessian_inv=failed_hess_inv, neg_log_posterior=np.inf)
+        return EStepResult(
+            pid_index=pid_index,
+            map_estimate=initial_guess,
+            hessian_inv=failed_hess_inv,
+            neg_log_posterior=np.inf,
+        )
 
     if not opt_result.success:
         warnings.warn(f"Optimization failed to converge for subject index {pid_index}. Message: {opt_result.message}")
@@ -95,38 +115,42 @@ def run_e_step_for_subject(pid_index: int,
     neg_log_post_val = opt_result.fun
 
     # --- Hessian Calculation ---
-    hessian_inv = np.eye(len(map_estimate)) * 1e6 # Default fallback
+    hessian_inv = np.eye(len(map_estimate)) * 1e6  # Default fallback
     try:
         # Recalculate objective function with args for numdifftools
-        hessian_calculator = nd.Hessian(lambda p: objective_func(p, *obj_args), step=1e-4, method='central')
+        hessian_calculator = nd.Hessian(lambda p: objective_func(p, *obj_args), step=1e-4, method="central")
         hessian_matrix = hessian_calculator(map_estimate)
 
         if not np.all(np.isfinite(hessian_matrix)):
-             warnings.warn(f"Non-finite values in Hessian for subject index {pid_index}. Using high-variance identity.")
+            warnings.warn(f"Non-finite values in Hessian for subject index {pid_index}. Using high-variance identity.")
         else:
             ridge = 1e-6
             hessian_matrix += np.eye(len(map_estimate)) * ridge
             try:
                 hessian_inv = np.linalg.inv(hessian_matrix)
-                hessian_inv[np.diag_indices_from(hessian_inv)] = np.maximum(
-                    np.diag(hessian_inv), EPSILON
-                 )
+                hessian_inv[np.diag_indices_from(hessian_inv)] = np.maximum(np.diag(hessian_inv), EPSILON)
             except np.linalg.LinAlgError:
                 warnings.warn(f"Hessian inversion failed for subject index {pid_index}. Using high-variance identity.")
     except Exception as e:
         warnings.warn(f"Error during Hessian calculation/inversion for subject index {pid_index}: {e}")
 
-    return EStepResult(pid_index=pid_index, map_estimate=map_estimate,
-                       hessian_inv=hessian_inv, neg_log_posterior=neg_log_post_val)
+    return EStepResult(
+        pid_index=pid_index,
+        map_estimate=map_estimate,
+        hessian_inv=hessian_inv,
+        neg_log_posterior=neg_log_post_val,
+    )
 
 
 # --- Parallel E-Step Wrapper ---
-def run_e_step_parallel(all_subject_data: List[pd.DataFrame],
-                        group_theta: Dict[str, Dict[str, float]],
-                        model_info: ModelLikelihoodInfo,
-                        optimizer_options: Dict = None,
-                        n_jobs: int = -1,
-                        verbose: bool = False) -> List[EStepResult]:
+def run_e_step_parallel(
+    all_subject_data: List[pd.DataFrame],
+    group_theta: Dict[str, Dict[str, float]],
+    model_info: ModelLikelihoodInfo,
+    optimizer_options: Dict = None,
+    n_jobs: int = -1,
+    verbose: bool = False,
+) -> List[EStepResult]:
     """
     Runs the E-step for all subjects in parallel using joblib.
     (Implementation is the same as before)
@@ -142,18 +166,19 @@ def run_e_step_parallel(all_subject_data: List[pd.DataFrame],
             group_theta=group_theta,
             model_info=model_info,
             optimizer_options=optimizer_options,
-            verbose=verbose # Pass verbose flag down
-        ) for i in range(num_subjects)
+            verbose=verbose,  # Pass verbose flag down
+        )
+        for i in range(num_subjects)
     )
-    results.sort(key=lambda res: res.pid_index if res else -1) # Sort safely if None possible
+    results.sort(key=lambda res: res.pid_index if res else -1)  # Sort safely if None possible
     # if verbose: tqdm.write("E-step finished.")
     return results
 
 
 # --- M-Step Function ---
-def run_m_step(e_step_results: List[EStepResult],
-               param_names: List[str],
-               verbose: bool = False) -> Dict[str, Dict[str, float]]:
+def run_m_step(
+    e_step_results: List[EStepResult], param_names: List[str], verbose: bool = False
+) -> Dict[str, Dict[str, float]]:
     """
     Performs the M-step: updates group hyperparameters (mu, var).
     (Implementation is the same as before)
@@ -162,27 +187,28 @@ def run_m_step(e_step_results: List[EStepResult],
     if not valid_results:
         raise ValueError("M-step received no valid E-step results.")
 
-    num_subjects = len(valid_results)
+    # num_subjects = len(valid_results)
     num_params = len(param_names)
     new_group_theta = {}
 
     all_maps = np.array([res.map_estimate for res in valid_results])
     all_vars = np.array([np.diag(res.hessian_inv) for res in valid_results])
 
-    if all_maps.ndim != 2 or all_maps.shape[1] != num_params or \
-       all_vars.ndim != 2 or all_vars.shape[1] != num_params:
-         raise ValueError(f"Shape mismatch in aggregated E-step results. MAPs: {all_maps.shape}, Vars: {all_vars.shape}, Params: {num_params}")
+    if all_maps.ndim != 2 or all_maps.shape[1] != num_params or all_vars.ndim != 2 or all_vars.shape[1] != num_params:
+        raise ValueError(
+            f"Shape mismatch in aggregated E-step results. MAPs: {all_maps.shape}, Vars: {all_vars.shape}, Params: {num_params}"
+        )
 
     for i, name in enumerate(param_names):
         new_mu = np.mean(all_maps[:, i])
-        mean_squared_param = np.mean(all_maps[:, i]**2 + all_vars[:, i])
+        mean_squared_param = np.mean(all_maps[:, i] ** 2 + all_vars[:, i])
         new_var = mean_squared_param - new_mu**2
         new_var = np.maximum(new_var, EPSILON**2)
 
         if not np.isfinite(new_mu) or not np.isfinite(new_var):
             raise RuntimeError(f"Non-finite group parameters calculated for {name} in M-step.")
 
-        new_group_theta[name] = {'mu': new_mu, 'var': new_var}
+        new_group_theta[name] = {"mu": new_mu, "var": new_var}
 
     # Print summary only outside the loop, controlled by main function's verbose
     # if verbose: print("M-step finished.")
@@ -190,14 +216,16 @@ def run_m_step(e_step_results: List[EStepResult],
 
 
 # --- Main EM Fitting Function ---
-def fit_em_hierarchical(all_subject_data: List[pd.DataFrame],
-                        model: ModelProtocol,
-                        initial_group_theta: Dict[str, Dict[str, float]],
-                        max_iter: int = 100,
-                        tolerance: float = 1e-4,
-                        n_jobs: int = -1,
-                        optimizer_options: Dict = None,
-                        verbose: bool = True) -> FitResult:
+def fit_em_hierarchical(
+    all_subject_data: List[pd.DataFrame],
+    model: ModelProtocol,
+    initial_group_theta: Dict[str, Dict[str, float]],
+    max_iter: int = 100,
+    tolerance: float = 1e-4,
+    n_jobs: int = -1,
+    optimizer_options: Dict = None,
+    verbose: bool = True,
+) -> FitResult:
     """
     Fits a hierarchical model using Expectation-Maximization with TQDM progress bar.
     (Implementation is the same as the last version)
@@ -227,21 +255,28 @@ def fit_em_hierarchical(all_subject_data: List[pd.DataFrame],
 
         # --- E-Step ---
         e_step_results = run_e_step_parallel(
-            all_subject_data, group_theta, model_info, optimizer_options, n_jobs,
-            verbose=False # Suppress internal prints from parallel step
+            all_subject_data,
+            group_theta,
+            model_info,
+            optimizer_options,
+            n_jobs,
+            verbose=False,  # Suppress internal prints from parallel step
         )
 
-        valid_e_step_results = [res for res in e_step_results if res is not None and np.all(np.isfinite(res.map_estimate))]
+        valid_e_step_results = [
+            res for res in e_step_results if res is not None and np.all(np.isfinite(res.map_estimate))
+        ]
         if not valid_e_step_results:
-             warnings.warn("E-step failed for all subjects. Aborting.")
-             converged = False
-             break
+            warnings.warn("E-step failed for all subjects. Aborting.")
+            converged = False
+            break
 
         # --- M-Step ---
         try:
             group_theta = run_m_step(
-                valid_e_step_results, param_names,
-                verbose=False # Suppress internal prints
+                valid_e_step_results,
+                param_names,
+                verbose=False,  # Suppress internal prints
             )
         except Exception as e:
             warnings.warn(f"Error during M-step (iteration {iteration + 1}): {e}. Aborting.")
@@ -249,30 +284,35 @@ def fit_em_hierarchical(all_subject_data: List[pd.DataFrame],
             break
 
         # --- Calculate EM Objective & Check Convergence ---
-        current_objective = sum(res.neg_log_posterior for res in valid_e_step_results if np.isfinite(res.neg_log_posterior))
+        current_objective = sum(
+            res.neg_log_posterior for res in valid_e_step_results if np.isfinite(res.neg_log_posterior)
+        )
         em_objective_sequence.append(current_objective)
 
         delta_theta = 0.0
         for name in param_names:
             if name in group_theta and name in group_theta_old:
-                 delta_theta += np.abs(group_theta[name]['mu'] - group_theta_old[name]['mu'])
-                 delta_theta += np.abs(group_theta[name]['var'] - group_theta_old[name]['var'])
+                delta_theta += np.abs(group_theta[name]["mu"] - group_theta_old[name]["mu"])
+                delta_theta += np.abs(group_theta[name]["var"] - group_theta_old[name]["var"])
             else:
-                 warnings.warn(f"Parameter {name} missing in theta comparison.")
-                 delta_theta = np.inf
+                warnings.warn(f"Parameter {name} missing in theta comparison.")
+                delta_theta = np.inf
 
-        pbar.set_postfix({ 'Objective': f"{current_objective:.4f}", 'dTheta': f"{delta_theta:.6f}" })
+        pbar.set_postfix({"Objective": f"{current_objective:.4f}", "dTheta": f"{delta_theta:.6f}"})
 
         if delta_theta < tolerance and iteration > 0:
             converged = True
             break
 
-    else: # Loop finished without break
-        if verbose and max_iter > 0 : warnings.warn(f"EM did not converge after {max_iter} iterations.")
+    else:  # Loop finished without break
+        if verbose and max_iter > 0:
+            warnings.warn(f"EM did not converge after {max_iter} iterations.")
 
-    if hasattr(pbar,'last_print_t') and pbar.last_print_t: pbar.close()
+    if hasattr(pbar, "last_print_t") and pbar.last_print_t:
+        pbar.close()
 
-    if converged and verbose: print(f"\nConvergence reached after {iteration + 1} iterations.")
+    if converged and verbose:
+        print(f"\nConvergence reached after {iteration + 1} iterations.")
 
     # --- Post-Convergence Calculations ---
     final_log_posterior_sum = 0.0
@@ -283,11 +323,13 @@ def fit_em_hierarchical(all_subject_data: List[pd.DataFrame],
             log_lik = model_info.log_likelihood_func(res.map_estimate, all_subject_data[subj_idx])
             log_pri = log_prior(res.map_estimate, group_theta, param_names)
             if np.isfinite(log_lik) and np.isfinite(log_pri):
-                 final_log_posterior_sum += (log_lik + log_pri)
-                 final_log_likelihood_sum += log_lik
+                final_log_posterior_sum += log_lik + log_pri
+                final_log_likelihood_sum += log_lik
             else:
-                 if verbose: warnings.warn(f"Could not calculate final posterior/likelihood for subject index {subj_idx}")
-                 final_log_posterior_sum = -np.inf; break
+                if verbose:
+                    warnings.warn(f"Could not calculate final posterior/likelihood for subject index {subj_idx}")
+                final_log_posterior_sum = -np.inf
+                break
 
         log_marginal_likelihood_approx = final_log_posterior_sum
         if verbose:
@@ -297,7 +339,7 @@ def fit_em_hierarchical(all_subject_data: List[pd.DataFrame],
         log_marginal_likelihood_approx = -np.inf
 
     total_trials = sum(len(subj_df) for subj_df in all_subject_data)
-    bic_int = calculate_bic_int(log_marginal_likelihood_approx, num_subjects, total_trials, group_theta)
+    bic_int = calculate_bic_int(log_marginal_likelihood_approx, total_trials, group_theta)
 
     if verbose:
         print(f"\nBIC_int: {bic_int:.4f}")
@@ -306,9 +348,9 @@ def fit_em_hierarchical(all_subject_data: List[pd.DataFrame],
         for name, params in group_theta.items():
             print(f"  {name}: mu={params['mu']:.4f}, var={params['var']:.4f}")
 
-
     end_time = time.time()
-    if verbose: print(f"Total fitting time: {end_time - start_time:.2f} seconds")
+    if verbose:
+        print(f"Total fitting time: {end_time - start_time:.2f} seconds")
 
     final_iterations = iteration + 1 if converged or iteration == max_iter - 1 else iteration
 
@@ -318,7 +360,7 @@ def fit_em_hierarchical(all_subject_data: List[pd.DataFrame],
         bic_int=bic_int,
         convergence_iterations=final_iterations,
         converged=converged,
-        final_objective=current_objective if e_step_results else np.inf
+        final_objective=current_objective if e_step_results else np.inf,
     )
 
     return fit_result
